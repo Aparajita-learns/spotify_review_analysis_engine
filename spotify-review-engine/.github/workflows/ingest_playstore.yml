@@ -1,0 +1,8 @@
+﻿# Phase 2 — Scheduled Play Store ingestion
+# Uncomment and configure after Phase 2 is implemented.
+# name: Ingest Play Store Reviews
+# on:
+#   schedule:
+#     - cron: '0 6 * * *'   # Daily at 06:00 UTC
+# jobs:
+#   ingest: ...

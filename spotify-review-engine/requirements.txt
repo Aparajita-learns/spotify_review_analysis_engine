@@ -1,0 +1,20 @@
+streamlit
+pandas
+numpy
+supabase
+psycopg2-binary
+sqlalchemy
+google-play-scraper
+requests
+beautifulsoup4
+scikit-learn
+python-dotenv
+pydantic
+plotly
+tqdm
+langdetect
+sentence-transformers
+# Optional LLM integrations (uncomment as needed):
+# openai
+# anthropic
+feedparser

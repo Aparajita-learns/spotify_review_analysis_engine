@@ -1,0 +1,1489 @@
+ 
+
+File 1 — review_discovery_engine.md 
+
+1     # Spotify Review Discovery Engine — Phase-wise Implementation Plan 
+
+2      
+
+3     ## 0. Purpose 
+
+4      
+
+5     Build a standalone AI-powered review intelligence system for Spotify that: 
+
+6     - ingests review/discussion data from App Store, Play Store, Reddit, and similar public sources 
+
+7     - stores raw + processed data in a free-tier database 
+
+8     - cleans, deduplicates, tags, segments, and summarizes review data 
+
+9     - exposes the workflow through a public Streamlit app 
+
+10     - produces insight-ready outputs for later product work 
+
+11      
+
+12     This system is independent from the Spotify Vibe MVP. 
+
+13      
+
+14     --- 
+
+15      
+
+16     ## 1. Target Outcome 
+
+17      
+
+18     Deliver a public Streamlit app with: 
+
+19     1. source ingestion controls 
+
+20     2. review explorer 
+
+21     3. theme and segment dashboards 
+
+22     4. insight summaries 
+
+23     5. semantic query interface ("Ask the reviews") 
+
+24      
+
+25     The app should be deployable from GitHub via Streamlit Community Cloud. Streamlit Community Cloud supports deploying apps directly from GitHub repositories and automatically updates apps from repository changes【5065†】【5067†】. 
+
+26      
+
+27     --- 
+
+28      
+
+29     ## 2. Recommended Tech Stack 
+
+30      
+
+31     ### Frontend / App 
+
+32     - Streamlit 
+
+33      
+
+34     ### Hosting 
+
+35     - Streamlit Community Cloud 
+
+36      
+
+37     ### Database 
+
+38     - Supabase Postgres 
+
+39      
+
+40     ### Vector Search 
+
+41     - pgvector on Supabase (same DB) 
+
+42      
+
+43     ### Ingestion 
+
+44     - Python scripts 
+
+45      
+
+46     ### Scheduling 
+
+47     - GitHub Actions (optional in later phase) 
+
+48      
+
+49     ### Review Processing 
+
+50     - Python + pandas 
+
+51     - scikit-learn for dedupe heuristics 
+
+52     - optional LLM API for theme extraction / summarization 
+
+53      
+
+54     ### Why this stack 
+
+55     - Streamlit Community Cloud is free and designed for public data apps that deploy from GitHub【5067†】. 
+
+56     - Supabase Free provides a Postgres database with 500 MB DB size and 1 GB file storage, but free projects pause after one week of inactivity【5070†】. 
+
+57     - `google-play-scraper` supports Python review crawling with pagination and review extraction without external dependencies【5077†】. 
+
+58      
+
+59     --- 
+
+60      
+
+61     ## 3. Folder Structure 
+
+62      
+
+63     ```text 
+
+64     spotify-review-engine/ 
+
+65     ├── app.py 
+
+66     ├── requirements.txt 
+
+67     ├── README.md 
+
+68     ├── .env.example 
+
+69     ├── .streamlit/ 
+
+70     │   └── config.toml 
+
+71     ├── sql/ 
+
+72     │   ├── schema.sql 
+
+73     │   ├── seeds.sql 
+
+74     │   └── views.sql 
+
+75     ├── src/ 
+
+76     │   ├── config/ 
+
+77     │   │   ├── settings.py 
+
+78     │   │   └── taxonomy.py 
+
+79     │   ├── db/ 
+
+80     │   │   ├── supabase_client.py 
+
+81     │   │   ├── repository.py 
+
+82     │   │   └── migrations.py 
+
+83     │   ├── ingest/ 
+
+84     │   │   ├── app_store_ingest.py 
+
+85     │   │   ├── play_store_ingest.py 
+
+86     │   │   ├── reddit_ingest.py 
+
+87     │   │   ├── manual_import.py 
+
+88     │   │   └── normalize.py 
+
+89     │   ├── process/ 
+
+90     │   │   ├── clean_text.py 
+
+91     │   │   ├── dedupe.py 
+
+92     │   │   ├── language.py 
+
+93     │   │   ├── classify_themes.py 
+
+94     │   │   ├── segment_users.py 
+
+95     │   │   ├── aggregate_insights.py 
+
+96     │   │   └── evidence_builder.py 
+
+97     │   ├── rag/ 
+
+98     │   │   ├── embed.py 
+
+99     │   │   ├── retrieve.py 
+
+100     │   │   └── answer.py 
+
+101     │   ├── ui/ 
+
+102     │   │   ├── pages_overview.py 
+
+103     │   │   ├── pages_ingestion.py 
+
+104     │   │   ├── pages_explorer.py 
+
+105     │   │   ├── pages_insights.py 
+
+106     │   │   └── pages_ask.py 
+
+107     │   └── utils/ 
+
+108     │       ├── logging.py 
+
+109     │       ├── hashing.py 
+
+110     │       ├── dates.py 
+
+111     │       └── validators.py 
+
+112     ├── data/ 
+
+113     │   ├── raw/ 
+
+114     │   ├── processed/ 
+
+115     │   └── manual_imports/ 
+
+116     ├── tests/ 
+
+117     │   ├── test_cleaning.py 
+
+118     │   ├── test_dedupe.py 
+
+119     │   ├── test_taxonomy.py 
+
+120     │   └── test_ranking.py 
+
+121     └── .github/ 
+
+122         └── workflows/ 
+
+123             ├── ingest_playstore.yml 
+
+124             ├── ingest_reddit.yml 
+
+125             └── app_checks.yml 
+
+ 
+
+4. Database Schema (SQL) 
+
+Use Supabase Postgres. 
+
+4.1 schema.sql 
+
+1     create extension if not exists vector; 
+
+2      
+
+3     create table if not exists sources ( 
+
+4         id uuid primary key default gen_random_uuid(), 
+
+5         source_name text not null,          -- app_store, play_store, reddit, manual_social 
+
+6         source_type text not null,          -- review, discussion 
+
+7         platform text not null,             -- Apple, GooglePlay, Reddit 
+
+8         ingestion_method text not null,     -- api, scraper, csv_import 
+
+9         created_at timestamptz default now() 
+
+10     ); 
+
+11      
+
+12     create table if not exists raw_documents ( 
+
+13         id uuid primary key default gen_random_uuid(), 
+
+14         source_id uuid references sources(id) on delete cascade, 
+
+15         external_id text, 
+
+16         title text, 
+
+17         body text not null, 
+
+18         author_name text, 
+
+19         rating numeric, 
+
+20         review_date timestamptz, 
+
+21         country text, 
+
+22         language text, 
+
+23         url text, 
+
+24         app_version text, 
+
+25         metadata jsonb default '{}'::jsonb, 
+
+26         ingested_at timestamptz default now(), 
+
+27         raw_hash text not null 
+
+28     ); 
+
+29      
+
+30     create unique index if not exists idx_raw_documents_source_external 
+
+31     on raw_documents(source_id, external_id); 
+
+32      
+
+33     create index if not exists idx_raw_documents_hash 
+
+34     on raw_documents(raw_hash); 
+
+35      
+
+36     create table if not exists clean_documents ( 
+
+37         id uuid primary key default gen_random_uuid(), 
+
+38         raw_document_id uuid unique references raw_documents(id) on delete cascade, 
+
+39         clean_text text not null, 
+
+40         normalized_text text not null, 
+
+41         detected_language text, 
+
+42         is_duplicate boolean default false, 
+
+43         duplicate_of uuid, 
+
+44         token_count integer, 
+
+45         processed_at timestamptz default now() 
+
+46     ); 
+
+47      
+
+48     create table if not exists themes ( 
+
+49         id uuid primary key default gen_random_uuid(), 
+
+50         theme_code text unique not null, 
+
+51         theme_name text not null, 
+
+52         theme_group text not null, 
+
+53         theme_description text 
+
+54     ); 
+
+55      
+
+56     create table if not exists document_themes ( 
+
+57         id uuid primary key default gen_random_uuid(), 
+
+58         clean_document_id uuid references clean_documents(id) on delete cascade, 
+
+59         theme_id uuid references themes(id) on delete cascade, 
+
+60         confidence numeric not null, 
+
+61         evidence_span text, 
+
+62         extraction_method text not null, 
+
+63         created_at timestamptz default now() 
+
+64     ); 
+
+65      
+
+66     create table if not exists user_segments ( 
+
+67         id uuid primary key default gen_random_uuid(), 
+
+68         segment_code text unique not null, 
+
+69         segment_name text not null, 
+
+70         segment_description text 
+
+71     ); 
+
+72      
+
+73     create table if not exists document_segments ( 
+
+74         id uuid primary key default gen_random_uuid(), 
+
+75         clean_document_id uuid references clean_documents(id) on delete cascade, 
+
+76         segment_id uuid references user_segments(id) on delete cascade, 
+
+77         confidence numeric not null, 
+
+78         reasoning_summary text, 
+
+79         created_at timestamptz default now() 
+
+80     ); 
+
+81      
+
+82     create table if not exists insights ( 
+
+83         id uuid primary key default gen_random_uuid(), 
+
+84         insight_title text not null, 
+
+85         insight_summary text not null, 
+
+86         insight_type text not null, -- friction, behavior, unmet_need, pattern 
+
+87         supporting_doc_count integer not null default 0, 
+
+88         theme_id uuid references themes(id), 
+
+89         segment_id uuid references user_segments(id), 
+
+90         created_at timestamptz default now() 
+
+91     ); 
+
+92      
+
+93     create table if not exists embeddings ( 
+
+94         id uuid primary key default gen_random_uuid(), 
+
+95         clean_document_id uuid unique references clean_documents(id) on delete cascade, 
+
+96         embedding vector(1536), 
+
+97         embedding_model text not null, 
+
+98         created_at timestamptz default now() 
+
+99     ); 
+
+100      
+
+101     create index if not exists idx_embeddings_vector 
+
+102     on embeddings using ivfflat (embedding vector_cosine_ops) 
+
+103     with (lists = 100); 
+
+ 
+
+5. Taxonomy Design 
+
+Define taxonomy in src/config/taxonomy.py. 
+
+5.1 Theme Groups 
+
+Discovery Frictions 
+
+repetitive_recommendations 
+
+same_artists_loop 
+
+weak_novelty 
+
+low_serendipity 
+
+hard_to_find_new_music 
+
+playlist_overdependence 
+
+poor_explanation_of_recommendations 
+
+Behavioral Intent 
+
+passive_discovery 
+
+active_exploration 
+
+mood_based_listening 
+
+social_discovery 
+
+genre_expansion 
+
+niche_music_search 
+
+Repetition Triggers 
+
+comfort_listening 
+
+habit_loop 
+
+low_trust_in_algo 
+
+background_listening 
+
+fear_of_bad_recommendations 
+
+Unmet Needs 
+
+novelty_control 
+
+explainability 
+
+discovery_mode 
+
+reset_recommendations 
+
+friend_based_discovery 
+
+5.2 User Segments 
+
+passive_familiar_listener 
+
+playlist_reliant_listener 
+
+active_explorer 
+
+mood_context_listener 
+
+social_discovery_listener 
+
+ 
+
+6. Data Ingestion Architecture 
+
+6.1 Sources 
+
+A. Google Play Reviews 
+
+Use Python package google-play-scraper. The package provides reviews() and reviews_all() methods, supports review pagination, and uses country/lang parameters【5077†】. 
+
+B. App Store Reviews 
+
+Use Apple review feed / API-compatible retrieval approaches. Apple explicitly documents App Store ratings and written reviews as product feedback signals and confirms reviews remain visible independently from rating resets【5084†】. 
+
+C. Reddit Discussions 
+
+Use public Reddit endpoints or lightweight scraping for relevant public threads. 
+
+D. Similar Sources 
+
+Implement a manual CSV import pathway for: 
+
+public forums 
+
+social conversation exports 
+
+any source that is easier to sample manually than automate initially 
+
+ 
+
+7. Source Modules 
+
+7.1 src/ingest/play_store_ingest.py 
+
+Responsibilities: 
+
+fetch reviews for com.spotify.music 
+
+support countries: us, in, gb 
+
+support sort modes: newest, most relevant 
+
+normalize into unified record format 
+
+write into raw_documents 
+
+Expected output fields: 
+
+external_id 
+
+body 
+
+rating 
+
+review_date 
+
+app_version 
+
+author_name 
+
+country 
+
+language 
+
+source metadata 
+
+7.2 src/ingest/app_store_ingest.py 
+
+Responsibilities: 
+
+pull App Store reviews using available Apple review feed/API-compatible path 
+
+iterate storefronts/countries 
+
+normalize into unified format 
+
+write into raw_documents 
+
+Expected output fields: 
+
+external_id 
+
+title 
+
+body 
+
+rating 
+
+review_date 
+
+author_name 
+
+country 
+
+source metadata 
+
+7.3 src/ingest/reddit_ingest.py 
+
+Responsibilities: 
+
+search for keyword sets: 
+
+spotify recommendations 
+
+spotify same songs 
+
+spotify discover weekly bad 
+
+spotify not discovering music 
+
+spotify repeats songs 
+
+extract post title, body, comments 
+
+flatten comments into individual documents if needed 
+
+write into raw_documents 
+
+7.4 src/ingest/manual_import.py 
+
+Responsibilities: 
+
+ingest CSV files with fields: 
+
+source_name 
+
+external_id 
+
+title 
+
+body 
+
+author_name 
+
+rating 
+
+review_date 
+
+country 
+
+language 
+
+url 
+
+validate format 
+
+insert into raw_documents 
+
+ 
+
+8. Data Normalization Contract 
+
+All ingestion modules must output the same internal shape: 
+
+1     { 
+
+2         "source_name": "play_store", 
+
+3         "source_type": "review", 
+
+4         "platform": "GooglePlay", 
+
+5         "ingestion_method": "scraper", 
+
+6         "external_id": "...", 
+
+7         "title": "...", 
+
+8         "body": "...", 
+
+9         "author_name": "...", 
+
+10         "rating": 4, 
+
+11         "review_date": "...", 
+
+12         "country": "us", 
+
+13         "language": "en", 
+
+14         "url": "...", 
+
+15         "app_version": "...", 
+
+16         "metadata": {...} 
+
+17     } 
+
+Normalization rules: 
+
+body is required 
+
+timestamps converted to ISO 8601 UTC 
+
+source names are controlled values 
+
+compute raw_hash = sha256(normalized text + source + external_id fallback) 
+
+ 
+
+9. Processing Pipeline 
+
+9.1 src/process/clean_text.py 
+
+Tasks: 
+
+trim whitespace 
+
+strip HTML 
+
+normalize punctuation 
+
+remove boilerplate 
+
+preserve semantic content 
+
+compute normalized_text for dedupe 
+
+Output: 
+
+clean_documents 
+
+9.2 src/process/language.py 
+
+Tasks: 
+
+detect language 
+
+optionally filter to English for MVP 
+
+optionally preserve all and mark detected language 
+
+9.3 src/process/dedupe.py 
+
+Three-stage dedupe: 
+
+exact hash match 
+
+normalized text similarity 
+
+semantic similarity fallback 
+
+Implementation: 
+
+exact duplicate: same raw_hash 
+
+near duplicate: 
+
+TF-IDF cosine similarity > threshold 
+
+or normalized Levenshtein similarity > threshold 
+
+semantic duplicate: 
+
+optional embedding cosine similarity threshold 
+
+Write: 
+
+is_duplicate 
+
+duplicate_of 
+
+9.4 src/process/classify_themes.py 
+
+Responsibilities: 
+
+assign one or more theme tags 
+
+assign confidence 
+
+attach evidence span 
+
+support two modes: 
+
+rules-only 
+
+rules + LLM refinement 
+
+Recommended execution pattern: 
+
+run keyword/rule pre-tagging 
+
+if ambiguous, call LLM for structured JSON output 
+
+Expected JSON response: 
+
+1     { 
+
+2       "themes": [ 
+
+3         {"theme_code": "repetitive_recommendations", "confidence": 0.91, "evidence_span": "keeps playing the same songs"} 
+
+4       ], 
+
+5       "behavior_tags": ["passive_discovery"], 
+
+6       "segment": "playlist_reliant_listener" 
+
+7     } 
+
+9.5 src/process/segment_users.py 
+
+Responsibilities: 
+
+infer user segment from review language 
+
+store one primary segment per review with confidence 
+
+write into document_segments 
+
+9.6 src/process/aggregate_insights.py 
+
+Responsibilities: 
+
+aggregate top themes by count 
+
+aggregate by source 
+
+aggregate by segment 
+
+identify strongest unmet needs 
+
+generate PM-style insight summaries 
+
+Each insight should have: 
+
+title 
+
+summary 
+
+type 
+
+supporting_doc_count 
+
+optional theme_id 
+
+optional segment_id 
+
+ 
+
+10. Embeddings + Semantic Query Layer 
+
+10.1 src/rag/embed.py 
+
+Responsibilities: 
+
+generate embeddings for clean_text 
+
+store in embeddings 
+
+10.2 src/rag/retrieve.py 
+
+Responsibilities: 
+
+semantic search by query 
+
+support filters: 
+
+source 
+
+theme 
+
+segment 
+
+rating 
+
+country 
+
+10.3 src/rag/answer.py 
+
+Responsibilities: 
+
+retrieve top-k evidence 
+
+synthesize concise answer 
+
+include evidence snippets 
+
+avoid hallucinated claims 
+
+Expected user query examples: 
+
+why do users repeat songs 
+
+what frustrates users about recommendations 
+
+which segment wants more novelty 
+
+what unmet needs appear most often 
+
+ 
+
+11. Streamlit App Architecture 
+
+11.1 Main App Structure 
+
+Use multi-page Streamlit app. 
+
+Pages: 
+
+Overview 
+
+Ingestion 
+
+Review Explorer 
+
+Themes & Segments 
+
+Insights 
+
+Ask the Reviews 
+
+11.2 app.py 
+
+Responsibilities: 
+
+initialize session 
+
+set theme 
+
+route pages 
+
+11.3 Page Specs 
+
+Page 1 — Overview 
+
+Show: 
+
+total raw documents 
+
+total processed documents 
+
+duplicates removed 
+
+top themes 
+
+top segments 
+
+last ingestion time 
+
+Page 2 — Ingestion 
+
+Controls: 
+
+ingest Play Store 
+
+ingest App Store 
+
+ingest Reddit 
+
+upload CSV 
+
+run normalization 
+
+Display: 
+
+records inserted 
+
+duplicates skipped 
+
+source-wise count 
+
+Page 3 — Review Explorer 
+
+Filters: 
+
+source 
+
+rating 
+
+theme 
+
+segment 
+
+keyword 
+
+country 
+
+Display per record: 
+
+source 
+
+raw text 
+
+cleaned text 
+
+assigned themes 
+
+assigned segment 
+
+evidence span 
+
+Page 4 — Themes & Segments 
+
+Charts/tables: 
+
+theme distribution 
+
+top frustrations 
+
+top unmet needs 
+
+segment x theme matrix 
+
+Page 5 — Insights 
+
+Cards: 
+
+top 5 product insights 
+
+biggest discovery friction 
+
+repetition triggers 
+
+segment opportunities 
+
+Page 6 — Ask the Reviews 
+
+Input: 
+
+free text question 
+
+Output: 
+
+answer summary 
+
+supporting snippets 
+
+filters applied 
+
+ 
+
+12. UI Theme Guidance 
+
+Keep the review engine clean and research-oriented: 
+
+dark sidebar 
+
+white/neutral content cards 
+
+Spotify green accents only for key highlights 
+
+avoid over-branding because this is a workflow tool, not the product MVP 
+
+ 
+
+13. Phase-wise Delivery Plan 
+
+Phase 1 — Repository + Database Setup 
+
+Deliverables 
+
+repo initialized 
+
+requirements.txt 
+
+Supabase project created 
+
+schema applied 
+
+taxonomy file created 
+
+Agent Tasks 
+
+Create repo structure exactly as specified 
+
+Create .env.example 
+
+Add schema.sql 
+
+Create Supabase client wrapper 
+
+Create taxonomy dictionaries 
+
+Add smoke test for DB connection 
+
+Exit Criteria 
+
+local app can connect to Supabase 
+
+tables exist 
+
+repo runs without syntax errors 
+
+ 
+
+Phase 2 — Ingestion Connectors 
+
+Deliverables 
+
+Play Store ingestion works 
+
+App Store ingestion works 
+
+Reddit ingestion works 
+
+manual CSV import works 
+
+Agent Tasks 
+
+Implement play_store_ingest.py 
+
+Implement app_store_ingest.py 
+
+Implement reddit_ingest.py 
+
+Implement manual_import.py 
+
+Implement normalize.py 
+
+Add CLI entrypoints 
+
+Exit Criteria 
+
+at least 100 documents per source can be inserted 
+
+no duplicate source/external_id collisions break ingestion 
+
+ 
+
+Phase 3 — Cleaning + Deduplication 
+
+Deliverables 
+
+cleaned records generated 
+
+duplicate flags generated 
+
+normalized text persisted 
+
+Agent Tasks 
+
+Implement text cleaning 
+
+Implement language detection 
+
+Implement exact duplicate logic 
+
+Implement fuzzy duplicate logic 
+
+Write duplicate metadata to DB 
+
+Add tests 
+
+Exit Criteria 
+
+raw documents transform into clean documents 
+
+duplicates are identified consistently 
+
+ 
+
+Phase 4 — Theme Extraction + User Segmentation 
+
+Deliverables 
+
+themes assigned to records 
+
+user segments assigned 
+
+evidence spans stored 
+
+Agent Tasks 
+
+Implement rule-based taxonomy classifier 
+
+Implement optional LLM fallback for ambiguous records 
+
+Implement segment assignment heuristics 
+
+Save theme links and segment links 
+
+Add confidence scoring 
+
+Exit Criteria 
+
+every processed review has zero or more themes 
+
+every processed review has one primary segment or "unknown" 
+
+ 
+
+Phase 5 — Insight Aggregation 
+
+Deliverables 
+
+insight generation script 
+
+top frustrations 
+
+top unmet needs 
+
+segment-based differences 
+
+Agent Tasks 
+
+Aggregate counts by theme 
+
+Aggregate counts by segment 
+
+Compute source comparisons 
+
+Generate insight summaries 
+
+Persist insights to DB 
+
+Exit Criteria 
+
+insights page can load meaningful summary cards 
+
+evidence-backed records exist behind every insight 
+
+ 
+
+Phase 6 — Embeddings + Semantic Search 
+
+Deliverables 
+
+embeddings generated 
+
+semantic retrieval works 
+
+ask-the-reviews flow works 
+
+Agent Tasks 
+
+Implement embedding generation pipeline 
+
+Store vectors in embeddings 
+
+Implement top-k retrieval 
+
+Build answer synthesis pipeline 
+
+Add source/theme/segment filters 
+
+Exit Criteria 
+
+user can ask a question and get evidence-backed answer snippets 
+
+ 
+
+Phase 7 — Streamlit UI + Deployment 
+
+Deliverables 
+
+multi-page Streamlit app 
+
+public deployment 
+
+usable workflow demo link 
+
+Agent Tasks 
+
+Build all pages 
+
+Add DB-backed charts/tables 
+
+Add ingestion controls 
+
+Add semantic search page 
+
+Add deployment config 
+
+Deploy via Streamlit Community Cloud 
+
+Exit Criteria 
+
+app is publicly reachable 
+
+app can demonstrate ingestion, processing, and query workflow 
+
+ 
+
+14. requirements.txt Starter 
+
+1     streamlit 
+
+2     pandas 
+
+3     numpy 
+
+4     supabase 
+
+5     psycopg2-binary 
+
+6     sqlalchemy 
+
+7     google-play-scraper 
+
+8     requests 
+
+9     beautifulsoup4 
+
+10     scikit-learn 
+
+11     python-dotenv 
+
+12     pydantic 
+
+13     plotly 
+
+14     tqdm 
+
+15     langdetect 
+
+16     sentence-transformers 
+
+Optional: 
+
+1     openai 
+
+2     anthropic 
+
+ 
+
+15. Environment Variables 
+
+1     SUPABASE_URL= 
+
+2     SUPABASE_KEY= 
+
+3     OPENAI_API_KEY= 
+
+4     ANTHROPIC_API_KEY= 
+
+5     REDDIT_CLIENT_ID= 
+
+6     REDDIT_CLIENT_SECRET= 
+
+7     REDDIT_USER_AGENT= 
+
+If Reddit API credentials are not used, keep a scraping/manual fallback path. 
+
+ 
+
+16. Recommended Development Order for Coding Agent 
+
+create folder structure 
+
+create DB schema and client 
+
+implement Play Store ingestion first 
+
+implement manual CSV import second 
+
+implement App Store ingestion third 
+
+implement Reddit ingestion fourth 
+
+implement cleaning and dedupe 
+
+implement taxonomy + segment logic 
+
+implement insight aggregation 
+
+build Streamlit pages 
+
+add embeddings and semantic query last 
+
+deploy 
+
+ 
+
+17. Deployment Plan 
+
+Streamlit Community Cloud 
+
+connect GitHub repo to Streamlit Community Cloud 
+
+choose app.py as entry point 
+
+configure secrets in Streamlit 
+
+deploy public app 
+
+Streamlit documentation states GitHub-connected deployment allows apps to be deployed from repositories and updated automatically when repository files change【5065†】【5067†】. 
+
+Supabase 
+
+create free project 
+
+run schema.sql 
+
+copy project URL and key into Streamlit secrets 
+
+Important: 
+
+free Supabase projects pause after one week of inactivity【5070†】 
+
+before demo or submission, make sure the app has been opened recently 
+
+ 
+
+18. MVP Acceptance Criteria 
+
+The Review Discovery Engine is complete when: 
+
+reviews from at least 3 sources can be ingested 
+
+all records are normalized into one DB schema 
+
+duplicates are handled 
+
+themes are assigned 
+
+user segments are inferred 
+
+insights are generated 
+
+a Streamlit app exposes the end-to-end workflow 
+
+the app is publicly accessible via link 
+
+ 
+
+19. Non-Goals 
+
+Do not implement: 
+
+private user research ingestion 
+
+recommendation generation for end users 
+
+actual Spotify account integration 
+
+production-grade large-scale scraping infrastructure 
+
+This system is a review analysis workflow, not the end-user MVP. 
+
+ 
+
+20. Final Handoff to Agent 
+
+Build this system as a self-contained review intelligence app. Prioritize: 
+
+stable ingestion 
+
+reliable schema 
+
+explainable processing 
+
+clean Streamlit workflow 
+
+public deployment 
+
+Do not over-engineer the LLM layer first. The critical path is: ingestion → storage → cleaning → themes → segments → insights → public app. 

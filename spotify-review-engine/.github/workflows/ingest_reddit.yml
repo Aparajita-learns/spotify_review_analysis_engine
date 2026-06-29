@@ -1,0 +1,8 @@
+﻿# Phase 2 — Scheduled Reddit ingestion
+# Uncomment and configure after Phase 2 is implemented.
+# name: Ingest Reddit Discussions
+# on:
+#   schedule:
+#     - cron: '0 7 * * *'   # Daily at 07:00 UTC
+# jobs:
+#   ingest: ...
