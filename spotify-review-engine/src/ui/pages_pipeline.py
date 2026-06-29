@@ -22,7 +22,7 @@ def render():
     before it appears in the Explorer or Insights dashboards.
     """)
     
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4, col5 = st.columns(5)
     
     with col1:
         st.subheader("1. Clean & Deduplicate")
@@ -35,7 +35,7 @@ def render():
 
     with col2:
         st.subheader("2. Classify Themes")
-        st.caption("Runs heuristic/regex keyword matching to assign reviews to the 23 PM themes.")
+        st.caption("Runs heuristic/regex keyword matching to assign reviews to the 13 PM themes.")
         theme_limit = st.number_input("Batch Size (Themes)", min_value=10, max_value=2000, value=500, step=100)
         if st.button("Run Theme Classifier", type="primary"):
             with st.spinner("Classifying themes..."):
@@ -50,6 +50,25 @@ def render():
             with st.spinner("Assigning segments..."):
                 res = process_segments(limit=seg_limit)
                 st.success(f"✅ Processed {res['processed']} documents. Assigned {res['segments_assigned']} segments.")
+
+    with col4:
+        st.subheader("4. Aggregate Insights")
+        st.caption("Analyzes the classified themes and segments to generate high-level PM insights.")
+        if st.button("Generate Insights", type="primary"):
+            with st.spinner("Aggregating data..."):
+                from src.process.aggregate_insights import generate_insights
+                res = generate_insights()
+                st.success(f"✅ Generated {res['insights_generated']} strategic insights.")
+
+    with col5:
+        st.subheader("5. Generate Embeddings")
+        st.caption("Computes vector embeddings for clean text using sentence-transformers (384-dim).")
+        embed_limit = st.number_input("Batch Size (Embed)", min_value=10, max_value=2000, value=50, step=10)
+        if st.button("Generate Embeddings", type="primary"):
+            with st.spinner("Computing embeddings locally..."):
+                from src.process.generate_embeddings import generate_embeddings
+                res = generate_embeddings(batch_size=embed_limit)
+                st.success(f"✅ Processed {res['processed']} docs. Inserted {res['inserted']} embeddings.")
 
     st.markdown("---")
     st.subheader("Database Status")

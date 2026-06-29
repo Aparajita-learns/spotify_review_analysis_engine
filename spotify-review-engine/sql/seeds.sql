@@ -25,14 +25,12 @@ on conflict (theme_code) do nothing;
 -- Group: repetition_triggers
 insert into themes (theme_code, theme_name, theme_group, theme_description) values
 ('comfort_listening',           'Comfort Listening',           'repetition_triggers', 'User deliberately returns to familiar music for comfort or safety.'),
-('habit_loop',                  'Habit Loop',                  'repetition_triggers', 'Listening to the same content has become an unconscious habit.'),
-('background_listening',        'Background Listening',        'repetition_triggers', 'User is not actively engaging — music is ambient background noise.')
+('habit_loop',                  'Habit Loop',                  'repetition_triggers', 'Listening to the same content has become an unconscious habit.')
 on conflict (theme_code) do nothing;
 
 -- Group: unmet_needs
 insert into themes (theme_code, theme_name, theme_group, theme_description) values
 ('novelty_control',        'Novelty Control',        'unmet_needs', 'User wants a dial or setting to control how adventurous recommendations are.'),
-('discovery_mode',         'Discovery Mode',         'unmet_needs', 'User wants a dedicated mode or session focused purely on finding new music.'),
 ('reset_recommendations',  'Reset Recommendations',  'unmet_needs', 'User wants to clear or reset their listening history and algorithm state.')
 on conflict (theme_code) do nothing;
 

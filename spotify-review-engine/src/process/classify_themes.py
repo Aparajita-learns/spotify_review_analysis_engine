@@ -28,9 +28,7 @@ THEME_KEYWORDS = {
     "genre_expansion": [r"\bgenre\b", r"\bnew style\b", r"\bexpand\b"],
     "comfort_listening": [r"\bfamiliar\b", r"\bcomfort\b", r"\bnostalgia\b", r"\bold favorites\b"],
     "habit_loop": [r"\bdaily mix\b", r"\balgorithm\b", r"\broutine\b"],
-    "background_listening": [r"\bwork\b", r"\bstudy\b", r"\bgym\b", r"\bdriving\b"],
     "novelty_control": [r"\bcontrol\b", r"\btweak\b", r"\badjust\b"],
-    "discovery_mode": [r"\bmode\b", r"\bswitch to\b"],
     "reset_recommendations": [r"\breset\b", r"\bstart over\b", r"\bclear\b", r"\bwipe\b"],
 }
 

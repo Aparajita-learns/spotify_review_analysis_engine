@@ -146,17 +146,6 @@ THEMES: Dict[str, ThemeDefinition] = {
         ],
     ),
 
-    "background_listening": ThemeDefinition(
-        code="background_listening",
-        name="Background Listening",
-        group="repetition_triggers",
-        description="User is not actively engaging — music is ambient background noise.",
-        keywords=[
-            "background", "working", "studying", "not paying attention",
-            "ambient", "focus music", "white noise", "while doing",
-        ],
-    ),
-
     # ── Unmet Needs ──────────────────────────────────────────────────────────
 
     "novelty_control": ThemeDefinition(
@@ -167,17 +156,6 @@ THEMES: Dict[str, ThemeDefinition] = {
         keywords=[
             "control", "slider", "setting", "how adventurous", "novelty",
             "dial up", "more new music", "less familiar", "customize",
-        ],
-    ),
-
-    "discovery_mode": ThemeDefinition(
-        code="discovery_mode",
-        name="Discovery Mode",
-        group="unmet_needs",
-        description="User wants a dedicated mode or session focused purely on finding new music.",
-        keywords=[
-            "discovery mode", "explore mode", "new music mode", "dedicated discovery",
-            "exploration feature", "find new music", "adventure mode",
         ],
     ),
 

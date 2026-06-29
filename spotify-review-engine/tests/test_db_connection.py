@@ -80,7 +80,7 @@ def test_taxonomy_seeded():
 def test_taxonomy_module():
     """Test that the local taxonomy module loads correctly."""
     from src.config.taxonomy import THEMES, USER_SEGMENTS, THEME_CODES, SEGMENT_CODES
-    assert len(THEMES) == 13, f"Expected 13 themes, got {len(THEMES)}"
+    assert len(THEMES) == 11, f"Expected 11 themes, got {len(THEMES)}"
     assert len(USER_SEGMENTS) == 5, f"Expected 5 segments, got {len(USER_SEGMENTS)}"
     print(f"✓ Taxonomy module: {len(THEMES)} themes, {len(USER_SEGMENTS)} segments loaded")
 

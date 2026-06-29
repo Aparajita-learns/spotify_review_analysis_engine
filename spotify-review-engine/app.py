@@ -58,8 +58,7 @@ with st.sidebar:
             "⬇️  Ingestion",
             "⚙️  Data Pipeline",
             "🔍 Review Explorer",
-            "🏷️  Themes & Segments",
-            "💡 Insights",
+            "💡 Insights & Themes",
             "💬 Ask the Reviews",
         ],
         label_visibility="collapsed",
@@ -74,8 +73,6 @@ with st.sidebar:
         st.success("🟢 Database connected")
     else:
         st.error("🔴 Database offline\nCheck your SUPABASE credentials.")
-
-    st.caption("Spotify Review Discovery Engine · Phase 1")
 
 # ── Page routing ──────────────────────────────────────────────────────────────
 if page == "📊 Overview":
@@ -94,11 +91,7 @@ elif page == "🔍 Review Explorer":
     from src.ui.pages_explorer import render
     render()
 
-elif page == "🏷️  Themes & Segments":
-    from src.ui.pages_insights import render
-    render()
-
-elif page == "💡 Insights":
+elif page == "💡 Insights & Themes":
     from src.ui.pages_insights import render
     render()
 

@@ -18,3 +18,5 @@ sentence-transformers
 # openai
 # anthropic
 feedparser
+google-generativeai
+torchvision
